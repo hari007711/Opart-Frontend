@@ -123,6 +123,7 @@ export default function Hours24PrepItems() {
       prepIntervalHours: item.prepIntervalHours,
       prepStatus: item.prepStatus,
       ingredientId: item.ingredientId,
+      category: item.category,
     })
   );
 

@@ -17,7 +17,7 @@ interface Item {
   isSelected: boolean;
 }
 
-export default function LabelPrintInterface() {
+export default function PrintLabel() {
   const [items, setItems] = useState<Item[]>([
     { id: 1, name: "Grilled Chicken", labelCount: 10, isSelected: false },
     { id: 2, name: "Beef Burger Patty", labelCount: 10, isSelected: false },
@@ -35,7 +35,7 @@ export default function LabelPrintInterface() {
 
   const [selectAll, setSelectAll] = useState(false);
   const { searchTerm } = useSearchStore();
-  const { setSelectedItemsCount } = usePrintLabelStore();
+  const { setSelectedItemsCount, setSelectedItems } = usePrintLabelStore();
 
   const filteredItems = useMemo(() => {
     if (!searchTerm.trim()) {
@@ -47,9 +47,16 @@ export default function LabelPrintInterface() {
   }, [items, searchTerm]);
 
   useEffect(() => {
-    const selectedCount = items.filter((item) => item.isSelected).length;
-    setSelectedItemsCount(selectedCount);
-  }, [items, setSelectedItemsCount]);
+    const selectedItemsList = items.filter((item) => item.isSelected);
+    setSelectedItemsCount(selectedItemsList.length);
+    setSelectedItems(
+      selectedItemsList.map((item) => ({
+        id: item.id,
+        name: item.name,
+        labelCount: item.labelCount,
+      }))
+    );
+  }, [items, setSelectedItemsCount, setSelectedItems]);
 
   const handleSelectAll = () => {
     const newSelectAll = !selectAll;
