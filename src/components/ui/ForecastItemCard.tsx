@@ -38,7 +38,6 @@ const ForecasttemCard: React.FC<ForecasttemCardProps> = ({
   image,
   itemId,
   day,
-  imageUrl,
 }) => {
   const [currentQuantity, setCurrentQuantity] = useState<QuantitiesState>({});
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -289,9 +288,9 @@ const ForecasttemCard: React.FC<ForecasttemCardProps> = ({
           <DrawerTrigger asChild>
             <div className="bg-white rounded-md p-2 flex items-start shadow-sm border border-black flex items-center gap-4 w-95 cursor-pointer hover:shadow-md transition-shadow">
               <div className="w-19 h-19 bg-gray-100 rounded-sm  overflow-hidden">
-                {imageUrl ? (
+                {image ? (
                   <Image
-                    src={imageUrl ?? ""}
+                    src={image}
                     alt={itemName}
                     width={100}
                     height={100}

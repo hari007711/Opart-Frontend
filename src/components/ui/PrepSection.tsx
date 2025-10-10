@@ -12,7 +12,6 @@ export interface PrepSectionItem {
   prepIntervalHours: number;
   prepStatus: string;
   ingredientId: string;
-  category: string;
 }
 
 interface PrepSectionProps {
@@ -52,7 +51,6 @@ export default function PrepSection({
             prepIntervalHours={item.prepIntervalHours}
             prepStatus={item.prepStatus}
             ingredientId={item.ingredientId}
-            category={item.category}
           />
         ))}
       </div>

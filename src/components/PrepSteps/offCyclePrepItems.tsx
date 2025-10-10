@@ -118,7 +118,6 @@ export default function OffCyclePrepItems() {
     prepIntervalHours: item.prepIntervalHours,
     prepStatus: item.prepStatus,
     ingredientId: item.ingredientId,
-    category: item.category,
   }));
 
   return (

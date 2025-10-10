@@ -16,8 +16,6 @@ import Image from "next/image";
 import type { StaticImageData } from "next/image";
 import checkImg from "@/assets/images/check.svg";
 import editIcon from "@/assets/images/editIcon.svg";
-import Temp from "@/assets/images/Temp.svg";
-
 import deleteIcon from "@/assets/images/delete.svg";
 import labelIcon from "@/assets/images/label.svg";
 import bluetoothIcon from "@/assets/images/bluetooth.svg";
@@ -35,8 +33,7 @@ import {
 import { Button } from "./Button";
 import { Input } from "./input";
 import { CommonDialog } from "../Dialog/CommonDialog";
-import { usePrintLabelStore, useRefreshStore } from "@/store/forecastStore";
-import PrintPreview from "../PrintLabels/PrintPreview";
+import { useRefreshStore } from "@/store/forecastStore";
 
 interface SearchItemCardProps {
   itemName: string;
@@ -66,8 +63,6 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
   const [hideTimerCompletely, setHideTimerCompletely] = useState(false);
   const [quantityExpired, setQuantityExpired] = useState<number>(0);
   const { triggerRefresh } = useRefreshStore();
-  const { setShowPreview, setSelectedItems, setSelectedItemsCount } =
-    usePrintLabelStore();
 
   const handleDecrease = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -79,18 +74,6 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
   const handleIncrease = (e: React.MouseEvent) => {
     e.stopPropagation();
     setCurrentQuantity(currentQuantity + 1);
-  };
-
-  const handleDecreasePrintCnt = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (labelsCnt > 0) {
-      setLabelsCnt(labelsCnt - 1);
-    }
-  };
-
-  const handleIncreasePrintCnt = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setLabelsCnt(labelsCnt + 1);
   };
 
   const duration = 3;
@@ -162,15 +145,11 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
     createCircularProgress(progressPercentage);
 
   const PreparationStatus = useCallback(
-    async (
-      ingredientPrepForecastId: string,
-      updatedBy: string,
-      status: string
-    ) => {
+    async (ingredientPrepForecastId: string, updatedBy: string) => {
       try {
         const payload = {
           ingredientPrepForecastId,
-          prepStatus: status,
+          prepStatus: "available",
           updatedBy,
         };
         const response = await api.PrepStatus(payload);
@@ -192,7 +171,7 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
 
   useEffect(() => {
     if (timeLeft === 0) {
-      PreparationStatus(ingredientPrepForecastId, updatedBy, "in-prep");
+      PreparationStatus(ingredientPrepForecastId, updatedBy);
     }
   }, [timeLeft, PreparationStatus, ingredientPrepForecastId, updatedBy]);
 
@@ -261,44 +240,6 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
     }
   };
 
-  const [labelsCnt, setLabelsCnt] = useState(1);
-
-  const PrintLabelApi = async () => {
-    try {
-      // Prepare data for preview
-      const labelsCount = Math.max(0, Number(labelsCnt) || 0);
-      const numericId = Number.parseInt(ingredientId, 10);
-      const safeId = Number.isFinite(numericId) ? numericId : Date.now();
-      setSelectedItems([
-        { id: safeId, name: itemName, labelCount: labelsCount },
-      ]);
-      setSelectedItemsCount(labelsCount > 0 ? 1 : 0);
-      setShowPreview(true);
-
-      const payload = {
-        ingredientPrepForecastId: ingredientPrepForecastId,
-      };
-      const response = await api.PrintLabel(payload);
-      // Store print metadata for preview rendering
-      const {
-        message,
-        ingredientName,
-        prepTime,
-        expiryTime,
-        prepIntervalHours,
-        updatedAt,
-      } = response || {};
-      usePrintLabelStore.getState().setPreviewMeta({
-        message,
-        ingredientName,
-        prepTime,
-        expiryTime,
-        prepIntervalHours,
-        updatedAt,
-      });
-    } catch (error) {}
-  };
-
   return (
     <Drawer
       open={isDrawerOpen}
@@ -340,7 +281,7 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
               {shouldShowTimer ? (
                 <button
                   onClick={handleDecrease}
-                  className="w-8 h-8 rounded-md p-2 bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors hover:cursor-pointer"
+                  className="w-8 h-8 rounded-md p-2 bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors"
                 >
                   <MinusIcon />
                 </button>
@@ -376,7 +317,7 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
               {shouldShowTimer && (
                 <button
                   onClick={handleIncrease}
-                  className="w-8 h-8 p-2 rounded-md bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors hover:cursor-pointer"
+                  className="w-8 h-8 p-2 rounded-md bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors"
                 >
                   <PlusIcon />
                 </button>
@@ -424,7 +365,7 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
                 </svg>
               )}
 
-              <div className="relative z-10 hover:cursor-pointer">
+              <div className="relative z-10">
                 {showCheckImg ? (
                   <div className="w-14 h-14 rounded-full flex items-center justify-center">
                     <Image
@@ -457,10 +398,9 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
 
       <DrawerContent className="max-h-screen mt-0 bg-[#4c6096] border-[#4c6096] !w-[550px] sm:!max-w-[550px] overflow-x-hidden">
         <div className="mx-auto w-full ">
-          <PrintPreview />
           <DrawerHeader>
             <DrawerTitle className="flex items-center gap-6 bg-white rounded-lg py-2 px-5">
-              <DrawerClose asChild className="hover:cursor-pointer">
+              <DrawerClose asChild>
                 <Image
                   src={backIcon}
                   alt={"back"}
@@ -500,16 +440,15 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
             <div className="w-full bg-gray-100 rounded-lg items-center p-2">
               {prepStatus !== "available" && (
                 <div
-                  className={`p-2 w-full rounded-lg border font-semibold items-center justify-center flex ${
+                  className={`bg-[#ffece6] p-2 w-full rounded-lg border  font-semibold items-center justify-center flex border-red-700 ${
                     showCheckImg
                       ? "bg-yellow-400 border-green-700 rounded shadow-xl"
-                      : timeLeft !== null ||
-                        (prepStatus === "in-prep" && timeLeft == null)
-                      ? "bg-yellow-400 text-black flex rounded-full border-yellow-500"
-                      : "bg-[#ffece6] items-center text-red-700 flex shadow-xl rounded-sm border-red-700"
+                      : timeLeft !== null
+                      ? "bg-yellow-400 text-black flex rounded-full"
+                      : "items-center text-red-700 flex shadow-xl rounded-sm"
                   }`}
                 >
-                  {!showCheckImg && timeLeft == null && prepStatus !== "in-prep"
+                  {!showCheckImg && timeLeft == null
                     ? "Item Unavailable"
                     : "In Prep Cycle"}
                 </div>
@@ -654,7 +593,7 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
                     {shouldShowTimer && (
                       <button
                         onClick={handleDecrease}
-                        className="w-12 h-12 rounded-md p-4 bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors hover:cursor-pointer"
+                        className="w-12 h-12 rounded-md p-4 bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors"
                       >
                         <MinusIcon />
                       </button>
@@ -672,52 +611,27 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
                     {shouldShowTimer && (
                       <button
                         onClick={handleIncrease}
-                        className="w-12 h-12 p-4 rounded-md bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors hover:cursor-pointer"
+                        className="w-12 h-12 p-4 rounded-md bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors"
                       >
                         <PlusIcon />
                       </button>
                     )}
                   </div>
                   <div
-                    className={`bg-[#1E3678] items-center px-5 ml-2 flex gap-2 justify-center w/full rounded-md hover:cursor-pointer ${
+                    className={`bg-[#1E3678] items-center px-5 ml-2 flex gap-2 justify-center w-full rounded-md ${
                       prepStatus == "available"
-                        ? "bg-green-800 w-full border-2 py-3 border-green-700 rounded shadow-xl"
+                        ? "bg-green-800 border-2 py-3 border-green-700 rounded shadow-xl"
                         : timeLeft !== null
-                        ? "bg-yellow-400 w-full flex shadow-lg border-2 border-yellow-500 rounded-full"
-                        : ingredientData?.category == "Batch Prep Items"
-                        ? "bg-yellow-500 w-full flex shadow-lg border-2 border-black rounded-full py-2"
-                        : // : prepStatus == "in-prep"
-                          // ? "bg-[#dadee9] w-full flex shadow-lg border-2 border-black rounded-full py-2"
-                          "items-center w-full py-3 flex shadow-xl rounded-sm"
+                        ? "bg-yellow-400 flex shadow-lg border-2 border-yellow-500 rounded-full"
+                        : "items-center py-3 flex shadow-xl rounded-sm"
                     }`}
                   >
                     <button
-                      onClick={(e) => {
-                        const isBatch =
-                          ingredientData?.category === "Batch Prep Items";
-                        const canTriggerBatch =
-                          !shouldShowTimer &&
-                          !showCheckImg &&
-                          timeLeft === null &&
-                          isBatch;
-                        if (canTriggerBatch) {
-                          e.stopPropagation();
-                          PreparationStatus(
-                            ingredientPrepForecastId,
-                            updatedBy,
-                            "print-label"
-                          );
-                          return;
-                        }
-                        (showCheckImg ? handleCheckImgClick : handleTimerClick)(
-                          e
-                        );
-                      }}
+                      onClick={
+                        showCheckImg ? handleCheckImgClick : handleTimerClick
+                      }
                       disabled={
-                        !shouldShowTimer &&
-                        !showCheckImg &&
-                        timeLeft === null &&
-                        !(ingredientData?.category === "Batch Prep Items")
+                        !shouldShowTimer && !showCheckImg && timeLeft === null
                       }
                       className={` flex items-center justify-center relative transition-all ${
                         showCheckImg
@@ -755,8 +669,8 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
                         </svg>
                       )}
 
-                      <div className=" z-10 hover:cursor-pointer">
-                        {prepStatus === "available" ? (
+                      <div className=" z-10">
+                        {prepStatus == "available" ? (
                           <div className="border-none flex items-center justify-center bg-green-800 text-black">
                             Ready to Use
                           </div>
@@ -774,27 +688,7 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
                           </div>
                         ) : shouldShowTimer ? (
                           <TimerPrepIcon color="white" width={30} height={30} />
-                        ) : ingredientData?.category === "Batch Prep Items" ? (
-                          <div className="flex items-center justify-center text-black shadow-none">
-                            <Image
-                              src={Temp}
-                              alt="Temp"
-                              width={30}
-                              height={30}
-                            />
-                            Check Temp
-                          </div>
-                        ) : (
-                          <div className="flex gap-2">
-                            <Image
-                              src={labelIcon}
-                              alt="Label"
-                              width={20}
-                              height={20}
-                            />
-                            <h6 className="text-gray-500">Print Prep Label</h6>
-                          </div>
-                        )}
+                        ) : null}
                       </div>
                     </button>
                     {!showCheckImg && timeLeft == null && shouldShowTimer && (
@@ -811,30 +705,31 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
                 <div className="flex items-center gap-2 mt-4 justify-between">
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={handleDecreasePrintCnt}
-                      className="w-12 h-12 rounded-md p-4 bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors hover:cursor-pointer"
+                      onClick={handleDecrease}
+                      className="w-12 h-12 rounded-md p-4 bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors"
                     >
                       <MinusIcon />
                     </button>
 
                     <div
                       className="bg-white border border-gray-400 rounded-md p-3 h-12 min-w-[80px] text-center shadow-inner text-base truncate"
-                      title={`${labelsCnt}`}
+                      title={`${currentQuantity} ${unit}`}
                     >
                       <span className="text-md text-black font-semibold">
-                        {labelsCnt}
+                        {currentQuantity}
+                        <span className="font-medium text-xs"> {unit}</span>
                       </span>
                     </div>
 
                     <button
-                      onClick={handleIncreasePrintCnt}
-                      className="w-12 h-12 p-4 rounded-md bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors hover:cursor-pointer"
+                      onClick={handleIncrease}
+                      className="w-12 h-12 p-4 rounded-md bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors"
                     >
                       <PlusIcon />
                     </button>
                   </div>
                   <div className="bg-white border border-black py-3 px-5 ml-2 flex gap-2 justify-between w-full rounded-md">
-                    <div className="flex gap-2" onClick={PrintLabelApi}>
+                    <div className="flex gap-2">
                       <Image
                         src={labelIcon}
                         alt={"Completed"}

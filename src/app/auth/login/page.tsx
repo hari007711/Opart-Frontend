@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
-import { useAuth } from "@/components/AuthProvider";
+import { useAuth as useAuthContext } from "@/components/AuthProvider";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
@@ -12,7 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser } = useAuthContext();
 
   useEffect(() => {
     if (user) {

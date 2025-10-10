@@ -8,8 +8,6 @@ import Hours24PrepItems from "@/components/PrepSteps/hours24PrepItems";
 import ForecastManager from "@/components/PrepSteps/forecastManager";
 import InventoryStockCount from "@/components/PrepSteps/inventoryStockCount";
 import InventoryStockOrder from "@/components/PrepSteps/inventoryStockOrder";
-import PrintLabel from "@/components/PrintLabels/PrintLabel";
-import SearchItems from "@/components/Search/Search";
 
 export default function HomePage() {
   const { currentStep } = useStep();
@@ -30,10 +28,6 @@ export default function HomePage() {
         return <InventoryStockCount />;
       case 6:
         return <InventoryStockOrder />;
-      case 7:
-        return <PrintLabel />;
-      case 8:
-        return <SearchItems />;
       default:
         return <ImmediatePrepItems />;
     }

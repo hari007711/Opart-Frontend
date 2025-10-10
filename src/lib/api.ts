@@ -44,7 +44,6 @@ export interface IngredientDetailResponse {
   prepStatus: "to-prep" | "available" | string;
   inventory: Inventory;
   forecastByDaypart: ForecastByDaypart[];
-  category?: string;
 }
 
 interface PrintLabelResponse {
