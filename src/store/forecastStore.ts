@@ -266,14 +266,39 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   },
 }));
 
+interface PrintLabelItem {
+  id: number;
+  name: string;
+  labelCount: number;
+}
+
 interface PrintLabelState {
   selectedItemsCount: number;
+  selectedItems: PrintLabelItem[];
+  showPreview: boolean;
+  previewMeta?: {
+    message?: string;
+    ingredientName?: string;
+    prepTime?: string;
+    expiryTime?: string;
+    prepIntervalHours?: number;
+    updatedAt?: string;
+  };
   setSelectedItemsCount: (count: number) => void;
+  setSelectedItems: (items: PrintLabelItem[]) => void;
+  setShowPreview: (show: boolean) => void;
+  setPreviewMeta: (meta: PrintLabelState["previewMeta"]) => void;
 }
 
 export const usePrintLabelStore = create<PrintLabelState>((set) => ({
   selectedItemsCount: 0,
+  selectedItems: [],
+  showPreview: false,
+  previewMeta: undefined,
   setSelectedItemsCount: (count) => set({ selectedItemsCount: count }),
+  setSelectedItems: (items) => set({ selectedItems: items }),
+  setShowPreview: (show) => set({ showPreview: show }),
+  setPreviewMeta: (meta) => set({ previewMeta: meta }),
 }));
 
 interface LocationState {

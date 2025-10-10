@@ -168,6 +168,7 @@ export default function ImmediatePrepItems() {
     prepIntervalHours: item.prepIntervalHours,
     prepStatus: item.prepStatus,
     ingredientId: item.ingredientId,
+    category: item.category,
   }));
 
   const batch: PrepSectionItem[] = batchPrepItems.map((item) => ({
@@ -180,6 +181,7 @@ export default function ImmediatePrepItems() {
     prepIntervalHours: item.prepIntervalHours,
     prepStatus: item.prepStatus,
     ingredientId: item.ingredientId,
+    category: item.category,
   }));
 
   const twentyFour: PrepSectionItem[] = twentyFourHourItems.map((item) => ({
@@ -192,6 +194,7 @@ export default function ImmediatePrepItems() {
     prepIntervalHours: item.prepIntervalHours,
     prepStatus: item.prepStatus,
     ingredientId: item.ingredientId,
+    category: item.category,
   }));
 
   return (
