@@ -1,3 +1,4 @@
+import { StaticImageData } from "next/image";
 import toast from "react-hot-toast";
 import { create } from "zustand";
 
@@ -9,6 +10,7 @@ interface ForecastItem {
   forecastId?: string;
   forecastGeneratedAt?: string;
   dayPart?: string;
+  category?: string;
 }
 
 interface ForecastState {
@@ -86,13 +88,36 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
 
   approveForecasts: async () => {
     const { date, modifiedBy, forecasts } = get();
+    console.log(forecasts, "forecasts");
+
+    // Flatten all items and group by their category field (not by the store key)
+    const allItems = Object.values(forecasts).flat();
+    const groupedByCategory: Record<
+      string,
+      Array<{
+        ingredientId: string;
+        ingredientName: string;
+        quantity: number;
+        modifiedIngredient: boolean;
+      }>
+    > = {};
+    allItems.forEach((item) => {
+      const categoryKey = item.category || "Uncategorized";
+      if (!groupedByCategory[categoryKey]) groupedByCategory[categoryKey] = [];
+      groupedByCategory[categoryKey].push({
+        ingredientId: item.posItemId,
+        ingredientName: item.posItemName,
+        quantity: item.forecastedQuantity,
+        modifiedIngredient: true,
+      });
+    });
 
     const body = {
       date,
-      modifiedBy,
-      forecasts: Object.keys(forecasts).map((dayPart) => ({
-        dayPart,
-        items: forecasts[dayPart],
+      approvedBy: modifiedBy,
+      forecasts: Object.keys(groupedByCategory).map((category) => ({
+        category,
+        ingredients: groupedByCategory[category],
       })),
     };
 
@@ -223,12 +248,39 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
   },
 }));
 
+interface CachedSearchResult {
+  searchTerm: string;
+  items: SearchItems[];
+  timestamp: number;
+}
+
+interface SearchItems {
+  id: number;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  image: StaticImageData | string;
+  ingredientPrepForecastId: string;
+  prepIntervalHours: number;
+  forecastedDate: string;
+  category: string;
+  daypartQuantity: number;
+  isPrepItem: boolean;
+  prepStatus: string;
+  status: "available" | "unAvailable";
+  ingredientId: string;
+}
+
 interface SearchState {
   searchTerm: string;
   recentSearches: string[];
+  searchCache: Map<string, CachedSearchResult>;
   setSearchTerm: (value: string) => void;
   addRecentSearch: (term: string) => void;
   clearRecentSearches: () => void;
+  // cacheSearchResult: (searchTerm: string, items: SearchItems[]) => void;
+  getCachedResult: (searchTerm: string) => CachedSearchResult | null;
+  clearSearchCache: () => void;
 }
 
 export const useSearchStore = create<SearchState>((set, get) => ({
@@ -237,6 +289,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     typeof window !== "undefined"
       ? JSON.parse(localStorage.getItem("recentSearches") || "[]")
       : [],
+  searchCache: new Map(),
 
   setSearchTerm: (value) => set({ searchTerm: value }),
 
@@ -264,12 +317,62 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       localStorage.removeItem("recentSearches");
     }
   },
+
+  // cacheSearchResult: (searchTerm, items) => {
+  //   const trimmedTerm = searchTerm.trim().toLowerCase();
+  //   const cacheEntry: CachedSearchResult = {
+  //     searchTerm: trimmedTerm,
+  //     items,
+  //     timestamp: Date.now(),
+  //   };
+
+  //   set((state) => {
+  //     const newCache = new Map(state.searchCache);
+  //     newCache.set(trimmedTerm, cacheEntry);
+
+  //     // Limit cache size to 50 entries
+  //     if (newCache.size > 50) {
+  //       const firstKey = newCache.keys().next().value;
+  //       newCache.delete(firstKey);
+  //     }
+
+  //     return { searchCache: newCache };
+  //   });
+  // },
+
+  getCachedResult: (searchTerm) => {
+    const trimmedTerm = searchTerm.trim().toLowerCase();
+    const { searchCache } = get();
+    const cached = searchCache.get(trimmedTerm);
+
+    if (!cached) return null;
+
+    // Check if cache is older than 5 minutes (300000 ms)
+    const isStale = Date.now() - cached.timestamp > 300000;
+    if (isStale) {
+      set((state) => {
+        const newCache = new Map(state.searchCache);
+        newCache.delete(trimmedTerm);
+        return { searchCache: newCache };
+      });
+      return null;
+    }
+
+    return cached;
+  },
+
+  clearSearchCache: () => {
+    set({ searchCache: new Map() });
+  },
 }));
 
 interface PrintLabelItem {
-  id: number;
+  id: string | number;
   name: string;
   labelCount: number;
+  prepTime?: string;
+  expiryTime?: string;
+  prepIntervalHours?: number;
 }
 
 interface PrintLabelState {
@@ -278,10 +381,18 @@ interface PrintLabelState {
   showPreview: boolean;
   previewMeta?: {
     message?: string;
-    ingredientName?: string;
-    prepTime?: string;
-    expiryTime?: string;
-    prepIntervalHours?: number;
+    totalRequested?: number;
+    totalSuccessful?: number;
+    totalFailed?: number;
+    labels?: Array<{
+      ingredientPrepForecastId: string;
+      ingredientName: string;
+      prepTime: string;
+      expiryTime: string;
+      prepIntervalHours: number;
+      success?: boolean;
+      error?: string;
+    }>;
     updatedAt?: string;
   };
   setSelectedItemsCount: (count: number) => void;

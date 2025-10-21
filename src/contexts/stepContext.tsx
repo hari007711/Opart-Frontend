@@ -15,7 +15,7 @@ interface StepContextType {
 const StepContext = createContext<StepContextType | undefined>(undefined);
 
 export function StepProvider({ children }: { children: ReactNode }) {
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep, setCurrentStep] = useState(4);
 
   const steps = [
     { id: 0, name: "Immediate Prep Items" },

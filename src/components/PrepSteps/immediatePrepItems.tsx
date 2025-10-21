@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PrepBatch3Hr from "@/assets/icons/prep-batch-3hr";
 import PrepSection, { PrepSectionItem } from "../ui/PrepSection";
 import PrepBatch1Hr from "@/assets/icons/prep-batch-1hr";
 import PrepBatch24Hr from "@/assets/icons/prep-batch-24";
 import { api } from "@/lib/api";
 import { StaticImageData } from "next/image";
+import { useForecastStore } from "@/store/forecastStore";
+import CustomScrollbar from "@/components/ui/CustomScrollbar";
 
 interface IngredientForecast {
   ingredientPrepForecastId: string;
@@ -48,6 +50,7 @@ interface ImmediateItemsResponse {
 }
 
 export default function ImmediatePrepItems() {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [offCycleItems, setOffCycleItems] = useState<OffCycleItem[]>([]);
   const [batchPrepItems, setBatchPrepItems] = useState<OffCycleItem[]>([]);
   const [twentyFourHourItems, setTwentyFourHourItems] = useState<
@@ -55,15 +58,17 @@ export default function ImmediatePrepItems() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const refreshTrigger = useForecastStore((state) => state.refreshTrigger);
 
   useEffect(() => {
     const fetchForecasts = async () => {
       try {
         setLoading(true);
-        const response: ImmediateItemsResponse = await api.ImmediateItems(
-          "2025-08-06"
-        );
-        const allIngredients = response.forecasts.flatMap(
+        const isApproved = refreshTrigger > 0;
+        const resp = isApproved
+          ? await api.ApprovedForecastApi("2025-08-06")
+          : await api.ImmediateItems("2025-08-06");
+        const allIngredients = (resp.forecasts || []).flatMap(
           (forecast: DayPartForecast) => forecast.ingredients
         );
 
@@ -144,7 +149,7 @@ export default function ImmediatePrepItems() {
     };
 
     fetchForecasts();
-  }, []);
+  }, [refreshTrigger]);
 
   if (loading) {
     return (
@@ -158,62 +163,133 @@ export default function ImmediatePrepItems() {
     return <div className="w-full h-fit p-4 text-red-500">{error}</div>;
   }
 
-  const offCycle: PrepSectionItem[] = offCycleItems.map((item) => ({
-    id: item.id,
-    itemName: item.itemName,
-    quantity: item.quantity,
-    unit: item.unit,
-    image: item.image as PrepSectionItem["image"],
-    ingredientPrepForecastId: item.ingredientPrepForecastId,
-    prepIntervalHours: item.prepIntervalHours,
-    prepStatus: item.prepStatus,
-    ingredientId: item.ingredientId,
-    category: item.category,
-  }));
+  // const offCycle: PrepSectionItem[] = offCycleItems.map((item) => ({
+  //   id: item.id,
+  //   itemName: item.itemName,
+  //   quantity: item.quantity,
+  //   unit: item.unit,
+  //   image: item.image as PrepSectionItem["image"],
+  //   ingredientPrepForecastId: item.ingredientPrepForecastId,
+  //   prepIntervalHours: item.prepIntervalHours,
+  //   prepStatus: item.prepStatus,
+  //   ingredientId: item.ingredientId,
+  //   category: item.category,
+  // }));
 
-  const batch: PrepSectionItem[] = batchPrepItems.map((item) => ({
-    id: item.id,
-    itemName: item.itemName,
-    quantity: item.quantity,
-    unit: item.unit,
-    image: item.image as PrepSectionItem["image"],
-    ingredientPrepForecastId: item.ingredientPrepForecastId,
-    prepIntervalHours: item.prepIntervalHours,
-    prepStatus: item.prepStatus,
-    ingredientId: item.ingredientId,
-    category: item.category,
-  }));
+  // const batch: PrepSectionItem[] = batchPrepItems.map((item) => ({
+  //   id: item.id,
+  //   itemName: item.itemName,
+  //   quantity: item.quantity,
+  //   unit: item.unit,
+  //   image: item.image as PrepSectionItem["image"],
+  //   ingredientPrepForecastId: item.ingredientPrepForecastId,
+  //   prepIntervalHours: item.prepIntervalHours,
+  //   prepStatus: item.prepStatus,
+  //   ingredientId: item.ingredientId,
+  //   category: item.category,
+  // }));
 
-  const twentyFour: PrepSectionItem[] = twentyFourHourItems.map((item) => ({
-    id: item.id,
-    itemName: item.itemName,
-    quantity: item.quantity,
-    unit: item.unit,
-    image: item.image as PrepSectionItem["image"],
-    ingredientPrepForecastId: item.ingredientPrepForecastId,
-    prepIntervalHours: item.prepIntervalHours,
-    prepStatus: item.prepStatus,
-    ingredientId: item.ingredientId,
-    category: item.category,
-  }));
+  // const twentyFour: PrepSectionItem[] = twentyFourHourItems.map((item) => ({
+  //   id: item.id,
+  //   itemName: item.itemName,
+  //   quantity: item.quantity,
+  //   unit: item.unit,
+  //   image: item.image as PrepSectionItem["image"],
+  //   ingredientPrepForecastId: item.ingredientPrepForecastId,
+  //   prepIntervalHours: item.prepIntervalHours,
+  //   prepStatus: item.prepStatus,
+  //   ingredientId: item.ingredientId,
+  //   category: item.category,
+  // }));
+
+  // ✅ Show only items with prepStatus = "to-prep"
+  const offCycle: PrepSectionItem[] = offCycleItems
+    .filter((item) => item.prepStatus === "to-prep")
+    .map((item) => ({
+      id: item.id,
+      itemName: item.itemName,
+      quantity: item.quantity,
+      unit: item.unit,
+      image: item.image as PrepSectionItem["image"],
+      ingredientPrepForecastId: item.ingredientPrepForecastId,
+      prepIntervalHours: item.prepIntervalHours,
+      prepStatus: item.prepStatus,
+      ingredientId: item.ingredientId,
+      category: item.category,
+    }));
+
+  const batch: PrepSectionItem[] = batchPrepItems
+    .filter((item) => item.prepStatus === "to-prep")
+    .map((item) => ({
+      id: item.id,
+      itemName: item.itemName,
+      quantity: item.quantity,
+      unit: item.unit,
+      image: item.image as PrepSectionItem["image"],
+      ingredientPrepForecastId: item.ingredientPrepForecastId,
+      prepIntervalHours: item.prepIntervalHours,
+      prepStatus: item.prepStatus,
+      ingredientId: item.ingredientId,
+      category: item.category,
+    }));
+
+  const twentyFour: PrepSectionItem[] = twentyFourHourItems
+    .filter((item) => item.prepStatus === "to-prep")
+    .map((item) => ({
+      id: item.id,
+      itemName: item.itemName,
+      quantity: item.quantity,
+      unit: item.unit,
+      image: item.image as PrepSectionItem["image"],
+      ingredientPrepForecastId: item.ingredientPrepForecastId,
+      prepIntervalHours: item.prepIntervalHours,
+      prepStatus: item.prepStatus,
+      ingredientId: item.ingredientId,
+      category: item.category,
+    }));
 
   return (
-    <div className="w-full h-fit">
-      <PrepSection
-        title="Off-cycle prep items"
-        icon={<PrepBatch1Hr color="rgb(5, 12, 31)" height={26} />}
-        items={offCycle}
-      />
-      <PrepSection
-        title="Batch Prep Items"
-        icon={<PrepBatch3Hr color="rgb(5, 12, 31)" height={26} />}
-        items={batch}
-      />
-      <PrepSection
-        title="24 Hours Prep Items"
-        icon={<PrepBatch24Hr color="rgb(5, 12, 31)" height={26} />}
-        items={twentyFour}
-      />
+    <div className="w-full h-fit relative">
+      <div
+        ref={scrollContainerRef}
+        className="pr-18 h-175 overflow-y-auto scrollbar-hide"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        <div data-day-part="Off-cycle prep items">
+          <PrepSection
+            title="Off-cycle prep items"
+            icon={<PrepBatch1Hr color="rgb(5, 12, 31)" height={26} />}
+            items={offCycle}
+          />
+        </div>
+        <div data-day-part="Batch Prep Items">
+          <PrepSection
+            title="Batch Prep Items"
+            icon={<PrepBatch3Hr color="rgb(5, 12, 31)" height={26} />}
+            items={batch}
+          />
+        </div>
+        <div data-day-part="24 Hours Prep Items">
+          <PrepSection
+            title="24 Hours Prep Items"
+            icon={<PrepBatch24Hr color="rgb(5, 12, 31)" height={26} />}
+            items={twentyFour}
+          />
+        </div>
+      </div>
+
+      <div className="absolute bg-[#dadee9] p-2 rounded-lg right-2 top-1/2 transform -translate-y-1/2">
+        <CustomScrollbar
+          scrollContainerRef={scrollContainerRef}
+          numberOfBoxes={3}
+          dayParts={[
+            "Off-cycle prep items",
+            "Batch Prep Items",
+            "24 Hours Prep Items",
+          ]}
+          height={205}
+        />
+      </div>
     </div>
   );
 }

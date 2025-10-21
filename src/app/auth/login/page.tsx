@@ -15,7 +15,7 @@ export default function LoginPage() {
   const { user, refreshUser } = useAuth();
 
   useEffect(() => {
-    if (user) {
+    if (typeof window !== "undefined" && user) {
       router.replace("/");
     }
   }, [user, router]);

@@ -1,5 +1,5 @@
 import { createAuthClient } from "better-auth/react";
 
 export const authClient = createAuthClient({
-  baseURL: "https://opart-frontend.vercel.app",
+  baseURL: typeof window !== "undefined" ? (process.env.BETTER_AUTH_URL || "http://localhost:3000") : "http://localhost:3000",
 });

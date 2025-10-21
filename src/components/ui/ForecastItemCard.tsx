@@ -26,6 +26,7 @@ interface ForecasttemCardProps {
   itemId?: string;
   day?: string;
   imageUrl?: string;
+  category?: string;
 }
 
 type QuantitiesState = Record<string, number>;
@@ -39,6 +40,7 @@ const ForecasttemCard: React.FC<ForecasttemCardProps> = ({
   itemId,
   day,
   imageUrl,
+  category,
 }) => {
   const [currentQuantity, setCurrentQuantity] = useState<QuantitiesState>({});
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -178,6 +180,7 @@ const ForecasttemCard: React.FC<ForecasttemCardProps> = ({
         forecastGeneratedAt: new Date().toISOString(),
         unit,
         dayPart,
+        category,
       });
     } else {
       if (!mainCardEdit(effectiveDayPart)) {
@@ -195,6 +198,7 @@ const ForecasttemCard: React.FC<ForecasttemCardProps> = ({
         forecastGeneratedAt: new Date().toISOString(),
         unit,
         dayPart: day,
+        category,
       });
     }
   };
@@ -229,6 +233,7 @@ const ForecasttemCard: React.FC<ForecasttemCardProps> = ({
         forecastGeneratedAt: new Date().toISOString(),
         unit,
         dayPart,
+        category,
       });
     } else {
       if (!mainCardEdit(effectiveDayPart)) {
@@ -246,6 +251,7 @@ const ForecasttemCard: React.FC<ForecasttemCardProps> = ({
         forecastGeneratedAt: new Date().toISOString(),
         unit,
         dayPart: day,
+        category,
       });
     }
   };
@@ -368,13 +374,13 @@ const ForecasttemCard: React.FC<ForecasttemCardProps> = ({
                     />
                   </DrawerClose>
                   <div className="w-15 h-15 bg-gray-100 rounded-sm flex-shrink-0 overflow-hidden">
-                    {image ? (
+                    {imageUrl ? (
                       <Image
-                        src={image?.src}
+                        src={imageUrl ?? ""}
                         alt={itemName}
-                        width={image?.width}
-                        height={image?.height}
-                        className="w-12 h-12 rounded object-cover"
+                        width={30}
+                        height={30}
+                        className="w-15 h-15 rounded object-cover"
                       />
                     ) : (
                       <FallBackSvg />
@@ -384,7 +390,7 @@ const ForecasttemCard: React.FC<ForecasttemCardProps> = ({
                 </DrawerTitle>
               </DrawerHeader>
               <div className="p-4 pb-0 space-y-4 ">
-                <div className="py-20 px-3 border  rounded-lg border-gray-300 bg-[#FAFAFA]">
+                <div className="border  rounded-lg border-gray-300 bg-[#FAFAFA]">
                   <div className="flex gap-4 items-center p-5 rounded-lg border border-gray-200 bg-white">
                     <h6 className="font-semibold">Total Forecast Quantity</h6>
 

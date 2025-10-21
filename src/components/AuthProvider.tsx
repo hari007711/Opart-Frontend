@@ -29,7 +29,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    refreshUser();
+    if (typeof window !== "undefined") {
+      refreshUser();
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   return (

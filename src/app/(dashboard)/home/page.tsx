@@ -40,7 +40,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="w-full h-full overflow-y-auto rounded-xl">
+    <div className="w-full h-full overflow-hidden rounded-xl">
       {renderStepComponent()}
     </div>
   );

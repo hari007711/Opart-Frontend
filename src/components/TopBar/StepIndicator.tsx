@@ -13,6 +13,7 @@ import Add from "@/assets/images/Add.svg";
 import Confirm from "@/assets/images/Confirm.svg";
 import Search from "@/assets/images/Search.svg";
 import Image from "next/image";
+import { api, MultiplePrintLabelResponse } from "@/lib/api";
 import {
   useDayCountStore,
   useForecastStatusStore,
@@ -48,7 +49,8 @@ export default function StepIndicator() {
   const [activeTab, setActiveTab] = useState("Overall");
   const { saveAllUpdates, isSaving, pendingUpdates } = useInventoryStore();
   const { searchTerm, setSearchTerm } = useSearchStore();
-  const { selectedItemsCount, setShowPreview } = usePrintLabelStore();
+  const { selectedItemsCount, selectedItems, setShowPreview } =
+    usePrintLabelStore();
   const { selectedLocation, setSelectedLocation } = useLocationStore();
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,6 +90,7 @@ export default function StepIndicator() {
   }, [isClicked]);
 
   const [isApproving, setIsApproving] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
 
   const handleApproveClick = async () => {
     try {
@@ -97,6 +100,62 @@ export default function StepIndicator() {
       console.error("Approve failed", err);
     } finally {
       setIsApproving(false);
+    }
+  };
+
+  const handlePrintLabelClick = async () => {
+    try {
+      setIsPrinting(true);
+
+      // Get selected items with labelCount > 0
+      const validItems = selectedItems.filter((item) => item.labelCount > 0);
+
+      if (validItems.length === 0) {
+        console.warn("No items with label count > 0");
+        return;
+      }
+
+      // Prepare payload with list of ingredientPrepForecastIds
+      const payload = {
+        ingredientPrepForecastIds: validItems.map((item) => String(item.id)),
+      };
+
+      const response = await api.MultiplePrintLabel(payload);
+
+      console.log("Print label API response:", response);
+
+      // Store print metadata for preview rendering
+      usePrintLabelStore.getState().setPreviewMeta({
+        message: response.message,
+        totalRequested: response.totalRequested,
+        totalSuccessful: response.totalSuccessful,
+        totalFailed: response.totalFailed,
+        labels: response.labels,
+        updatedAt: response.updatedAt,
+      });
+
+      // Update selected items with prep/expiry times from response
+      if (response.labels) {
+        const updatedSelectedItems = validItems.map((item) => {
+          const apiLabel = response.labels.find(
+            (label) => label.ingredientPrepForecastId === String(item.id)
+          );
+          return {
+            ...item,
+            prepTime: apiLabel?.prepTime,
+            expiryTime: apiLabel?.expiryTime,
+            prepIntervalHours: apiLabel?.prepIntervalHours,
+          };
+        });
+        usePrintLabelStore.getState().setSelectedItems(updatedSelectedItems);
+      }
+
+      // Show preview
+      setShowPreview(true);
+    } catch (error) {
+      console.error("Error printing labels:", error);
+    } finally {
+      setIsPrinting(false);
     }
   };
 
@@ -312,18 +371,18 @@ export default function StepIndicator() {
                       } selected`}
                 </p>
                 <button
-                  onClick={() => setShowPreview(true)}
+                  onClick={handlePrintLabelClick}
                   className={`px-4 py-3 text-white rounded-md flex items-center gap-3 transition-colors  ${
-                    selectedItemsCount === 0
+                    selectedItemsCount === 0 || isPrinting
                       ? "bg-gray-400 cursor-not-allowed"
                       : "bg-[#1f3678] hover:bg-[#1a2e66] cursor-pointer hover:cursor-pointer"
                   }`}
-                  disabled={selectedItemsCount === 0}
+                  disabled={selectedItemsCount === 0 || isPrinting}
                 >
                   <span>
                     <Image src={Print} alt="Order" height={20} width={20} />
                   </span>
-                  Print Label
+                  {isPrinting ? "Printing..." : "Print Label"}
                 </button>
               </div>
             )}
@@ -343,7 +402,7 @@ export default function StepIndicator() {
                   </span>
                   Insights
                 </button>
-                <button
+                {/* <button
                   onClick={() => setForecastState("modify")}
                   className="px-4 py-3 bg-[#1f3678] text-white text-xl font-semibold rounded-md hover:bg-[#1a2e66] flex items-center gap-3"
                 >
@@ -351,7 +410,7 @@ export default function StepIndicator() {
                     <Image src={Edit} alt="Edit" height={25} width={25} />
                   </span>
                   Modify
-                </button>
+                </button> */}
                 <button
                   className={`px-4 py-3 font-semibold text-xl rounded-md flex items-center gap-3 ${
                     isApproving
@@ -456,7 +515,7 @@ export default function StepIndicator() {
                             <span>
                               <SearchIcon width={25} height={25} />
                             </span>
-                            search items
+                            Search Items
                           </button>
                           <button
                             onClick={() => setCurrentStep(7)}

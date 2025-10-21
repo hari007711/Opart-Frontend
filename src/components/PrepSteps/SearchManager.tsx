@@ -1,10 +1,10 @@
 import PrepBatch3Hr from "@/assets/icons/prep-batch-3hr";
-import PrepSection, { PrepSectionItem } from "../ui/PrepSection";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { StaticImageData } from "next/image";
 import { useRefreshStore, useSearchStore } from "@/store/forecastStore";
 import SearchSection, { SearchSectionItem } from "../ui/SearchSection";
+import CustomScrollbar from "../ui/CustomScrollbar";
 
 interface IngredientForecast {
   ingredientPrepForecastId: string;
@@ -54,9 +54,16 @@ export default function SearchManager() {
   const [error, setError] = useState<string | null>(null);
   const [noResultsMessage, setNoResultsMessage] = useState<string | null>(null);
   const { refreshKey } = useRefreshStore();
-  const { searchTerm, recentSearches, addRecentSearch } = useSearchStore();
+  const {
+    searchTerm,
+    recentSearches,
+    addRecentSearch,
+    // cacheSearchResult,
+    getCachedResult,
+  } = useSearchStore();
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
   const [showRecentSearches, setShowRecentSearches] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -76,6 +83,18 @@ export default function SearchManager() {
         return;
       }
       setShowRecentSearches(false);
+
+      // Check cache first
+      const cachedResult = getCachedResult(debouncedSearchTerm);
+      if (cachedResult) {
+        setBatchPrepItems(cachedResult.items);
+        setNoResultsMessage(null);
+        setError(null);
+        setLoading(false);
+        addRecentSearch(debouncedSearchTerm);
+        return;
+      }
+
       try {
         setLoading(true);
         addRecentSearch(debouncedSearchTerm);
@@ -113,6 +132,9 @@ export default function SearchManager() {
             ingredientId: item.ingredientId,
           })
         );
+
+        // Cache the successful result
+        // cacheSearchResult(debouncedSearchTerm, batchPrep);
 
         setBatchPrepItems(batchPrep);
         setNoResultsMessage(null);
@@ -228,10 +250,29 @@ export default function SearchManager() {
 
   return (
     <div className="w-full h-fit ">
-      <SearchSection
-        icon={<PrepBatch3Hr color="rgb(5, 12, 31)" height={26} />}
-        items={itemsForPrepSection}
-      />
+      <div
+        ref={scrollContainerRef}
+        className="pr-18 h-175 overflow-y-auto scrollbar-hide"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        <SearchSection
+          icon={<PrepBatch3Hr color="rgb(5, 12, 31)" height={26} />}
+          items={itemsForPrepSection}
+        />
+      </div>
+      <div className="absolute bg-[#dadee9] p-2 rounded-lg right-5 mt-1 top-[55%] transform -translate-y-1/2">
+        <CustomScrollbar
+          scrollContainerRef={scrollContainerRef}
+          numberOfBoxes={4}
+          dayParts={[
+            "Off-cycle prep items",
+            "Batch Prep Items",
+            "24 Hours Prep Items",
+            "Non-Food Items",
+          ]}
+          height={150}
+        />
+      </div>
     </div>
   );
 }

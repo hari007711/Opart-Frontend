@@ -1,5 +1,4 @@
 import React from "react";
-import PrepItemCard from "./PrepItemCard";
 import type { StaticImageData } from "next/image";
 import SearchItemCard from "./SearchItemCard";
 

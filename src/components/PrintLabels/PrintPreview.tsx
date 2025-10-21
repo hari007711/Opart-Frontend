@@ -18,13 +18,23 @@ export default function PrintPreview() {
 
   // Generate labels for printing - each item repeated by labelCount
   const generateLabels = () => {
-    const labels: Array<{ id: number; name: string; index: number }> = [];
+    const labels: Array<{
+      id: string | number;
+      name: string;
+      index: number;
+      prepTime?: string;
+      expiryTime?: string;
+      prepIntervalHours?: number;
+    }> = [];
     selectedItems.forEach((item) => {
       for (let i = 0; i < item.labelCount; i++) {
         labels.push({
           id: item.id,
           name: item.name,
           index: i + 1,
+          prepTime: item.prepTime,
+          expiryTime: item.expiryTime,
+          prepIntervalHours: item.prepIntervalHours,
         });
       }
     });
@@ -37,13 +47,6 @@ export default function PrintPreview() {
     day: "2-digit",
     year: "numeric",
   });
-  const currentTime =
-    previewMeta?.prepTime ||
-    new Date().toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  const expiryTime = previewMeta?.expiryTime;
 
   const handlePrint = () => {
     // Render into a hidden iframe to avoid popup blockers/blank pages
@@ -70,12 +73,18 @@ export default function PrintPreview() {
                 </div>
                 <div class=\"cell\">
                   <p class=\"hint\">Prep Time:</p>
-                  <p class=\"value\">${currentTime}</p>
+                  <p class=\"value\">${
+                    label.prepTime ||
+                    new Date().toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  }</p>
                 </div>
               </div>
               ${
-                expiryTime
-                  ? `<div class=\"row\"><div class=\"cell\"><p class=\"hint\">Expiry Time:</p><p class=\"value\">${expiryTime}</p></div></div>`
+                label.expiryTime
+                  ? `<div class=\"row\"><div class=\"cell\"><p class=\"hint\">Expiry Time:</p><p class=\"value\">${label.expiryTime}</p></div></div>`
                   : ""
               }
               <div class=\"field\"><p class=\"hint\">Use By Date:</p><div class=\"input\"></div></div>
@@ -147,12 +156,68 @@ export default function PrintPreview() {
           </DialogHeader>
 
           <div className="mt-4">
+            {/* API Response Summary */}
+            {previewMeta && (
+              <div>
+                {/* <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-semibold text-gray-900">
+                    {previewMeta.message}
+                  </h4>
+                  {previewMeta.updatedAt && (
+                    <span className="text-xs text-gray-500">
+                      {new Date(previewMeta.updatedAt).toLocaleString()}
+                    </span>
+                  )}
+                </div> */}
+                {/* {previewMeta.totalRequested !== undefined && (
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <span className="text-gray-600">Total Requested: </span>
+                      <span className="font-semibold">
+                        {previewMeta.totalRequested}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-green-600">Successful: </span>
+                      <span className="font-semibold text-green-700">
+                        {previewMeta.totalSuccessful}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-red-600">Failed: </span>
+                      <span className="font-semibold text-red-700">
+                        {previewMeta.totalFailed}
+                      </span>
+                    </div>
+                  </div>
+                )} */}
+                {/* Show error messages if any */}
+                {previewMeta.labels?.some((l) => l.error) && (
+                  <div className="mt-3 space-y-1">
+                    {previewMeta.labels
+                      .filter((l) => l.error)
+                      .map((label, idx) => (
+                        <div
+                          key={idx}
+                          className="text-sm text-red-700 bg-red-50 p-2 rounded border border-red-200"
+                        >
+                          <span className="font-medium">
+                            {label.ingredientName}:
+                          </span>{" "}
+                          {label.error}
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex gap-3 mb-6 print:hidden">
               <Button
                 onClick={handlePrint}
                 className="bg-[#1f3678] hover:bg-[#1a2e66] text-white"
+                disabled={labels.length === 0}
               >
-                Print Labels
+                Print Labels {labels.length > 0 && `(${labels.length})`}
               </Button>
               <Button
                 onClick={handleClose}
@@ -217,18 +282,22 @@ export default function PrintPreview() {
                               Prep Time:
                             </p>
                             <p className="text-sm font-semibold text-gray-900">
-                              {currentTime}
+                              {label.prepTime ||
+                                new Date().toLocaleTimeString("en-US", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
                             </p>
                           </div>
                         </div>
 
-                        {expiryTime && (
+                        {label.expiryTime && (
                           <div>
                             <p className="text-xs text-gray-600 font-medium">
                               Expiry Time:
                             </p>
                             <p className="text-sm font-semibold text-gray-900">
-                              {expiryTime}
+                              {label.expiryTime}
                             </p>
                           </div>
                         )}

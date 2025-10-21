@@ -1,8 +1,10 @@
 import PrepSection, { PrepSectionItem } from "../ui/PrepSection";
 import PrepBatch1Hr from "@/assets/icons/prep-batch-1hr";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { StaticImageData } from "next/image";
+import { useForecastStore, useRefreshStore } from "@/store/forecastStore";
+import CustomScrollbar from "../ui/CustomScrollbar";
 
 interface IngredientForecast {
   ingredientPrepForecastId: string;
@@ -49,22 +51,25 @@ export default function OffCyclePrepItems() {
   const [offCycleItems, setOffCycleItems] = useState<OffCycleItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { refreshKey } = useRefreshStore();
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const refreshTrigger = useForecastStore((state) => state.refreshTrigger);
 
   useEffect(() => {
     const fetchForecasts = async () => {
       try {
         setLoading(true);
-        const response: ImmediateItemsResponse = await api.ImmediateItems(
-          "2025-08-06"
-        );
-        const allIngredients = response.forecasts.flatMap(
+        const isApproved = refreshTrigger > 0;
+        const resp = isApproved
+          ? await api.ApprovedForecastApi("2025-08-06")
+          : await api.ImmediateItems("2025-08-06");
+        const allIngredients = (resp.forecasts || []).flatMap(
           (forecast: DayPartForecast) => forecast.ingredients
         );
 
         const offCycle: OffCycleItem[] = allIngredients
           .filter(
-            (item: IngredientForecast) =>
-              item.category === "Off-cycle Fry Prep Items"
+            (item: IngredientForecast) => item.category === "Batch Prep Items"
           )
           .map((item: IngredientForecast, index: number) => ({
             id: index + 1,
@@ -87,7 +92,7 @@ export default function OffCyclePrepItems() {
         setError(null);
       } catch (err) {
         setError("Failed to load ingredient forecasts");
-        console.error("Fetch error:", err);
+        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -123,10 +128,28 @@ export default function OffCyclePrepItems() {
 
   return (
     <div className="w-full h-fit ">
-      <PrepSection
-        icon={<PrepBatch1Hr color="rgb(5, 12, 31)" height={26} />}
-        items={itemsForPrepSection}
-      />
+      <div
+        ref={scrollContainerRef}
+        className="pr-18 h-175 overflow-y-auto scrollbar-hide"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        <PrepSection
+          icon={<PrepBatch1Hr color="rgb(5, 12, 31)" height={26} />}
+          items={itemsForPrepSection}
+        />
+      </div>
+      <div className="absolute bg-[#dadee9] p-2 rounded-lg right-5 mt-1 top-[54%] transform -translate-y-1/2">
+        <CustomScrollbar
+          scrollContainerRef={scrollContainerRef}
+          numberOfBoxes={3}
+          dayParts={[
+            "Off-cycle prep items",
+            "Batch Prep Items",
+            "24 Hours Prep Items",
+          ]}
+          height={205}
+        />
+      </div>
     </div>
   );
 }

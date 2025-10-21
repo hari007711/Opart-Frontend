@@ -290,10 +290,19 @@ const SearchItemCard: React.FC<SearchItemCardProps> = ({
       } = response || {};
       usePrintLabelStore.getState().setPreviewMeta({
         message,
-        ingredientName,
-        prepTime,
-        expiryTime,
-        prepIntervalHours,
+        totalRequested: 1,
+        totalSuccessful: 1,
+        totalFailed: 0,
+        labels: [
+          {
+            ingredientPrepForecastId: ingredientPrepForecastId,
+            ingredientName,
+            prepTime,
+            expiryTime,
+            prepIntervalHours,
+            success: true,
+          },
+        ],
         updatedAt,
       });
     } catch (error) {}

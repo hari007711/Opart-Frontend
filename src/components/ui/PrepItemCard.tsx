@@ -20,6 +20,8 @@ import Temp from "@/assets/images/Temp.svg";
 
 import deleteIcon from "@/assets/images/delete.svg";
 import labelIcon from "@/assets/images/label.svg";
+import labelIconBlacl from "@/assets/images/labelBlack.svg";
+
 import bluetoothIcon from "@/assets/images/bluetooth.svg";
 import backIcon from "@/assets/images/back.svg";
 import { api, IngredientDetailResponse } from "@/lib/api";
@@ -48,6 +50,8 @@ interface PrepItemCardProps {
   prepStatus: string;
   ingredientId: string;
   category: string;
+  // When this counter changes, Batch Prep Items auto-start prep
+  prepAllSignal?: number;
 }
 
 const PrepItemCard: React.FC<PrepItemCardProps> = ({
@@ -60,6 +64,7 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
   prepStatus,
   ingredientId,
   category,
+  prepAllSignal,
 }) => {
   const [currentQuantity, setCurrentQuantity] = useState(quantity);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -102,11 +107,43 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
 
   const handleTimerClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    console.log("timer clickeed");
+
     if (timeLeft === null && !showCheckImg) {
       setTimeLeft(duration);
       setHideTimerCompletely(false);
     }
   };
+
+  // Auto-start timers for Batch Prep Items when Prep All is clicked
+  useEffect(() => {
+    if (!prepAllSignal) return;
+    if (category !== "Batch Prep Items") return;
+    // Ensure status allows showing timer; if not, move to to-prep first
+    const ensureToPrep = async () => {
+      try {
+        if (effectiveStatus !== "to-prep" && effectiveStatus !== "in-prep") {
+          await PreparationStatus(
+            ingredientPrepForecastId,
+            updatedBy,
+            "to-prep"
+          );
+        }
+        if (
+          timeLeft === null &&
+          !showCheckImg &&
+          effectiveStatus !== "check-temp"
+        ) {
+          setTimeLeft(duration);
+          setHideTimerCompletely(false);
+        }
+      } catch (e) {
+        console.error("Failed to start prep for item", e);
+      }
+    };
+    void ensureToPrep();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepAllSignal]);
 
   const handleCheckImgClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -126,19 +163,6 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
   }, [timeLeft]);
 
   const isCompleted = timeLeft === 0;
-
-  useEffect(() => {
-    if (isCompleted && timeLeft === 0) {
-      setShowCheckImg(true);
-      const timeout = setTimeout(() => {
-        setShowCheckImg(false);
-        setTimeLeft(null);
-        setHideTimerCompletely(true);
-      }, 2000);
-
-      return () => clearTimeout(timeout);
-    }
-  }, [isCompleted, timeLeft]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -163,6 +187,9 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
   const { strokeDasharray, strokeDashoffset } =
     createCircularProgress(progressPercentage);
 
+  const [prepRes, setPrepRes] = useState<string>("");
+  const effectiveStatus = prepRes || prepStatus;
+
   const PreparationStatus = useCallback(
     async (
       ingredientPrepForecastId: string,
@@ -176,13 +203,28 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
           updatedBy,
         };
         const response = await api.PrepStatus(payload);
+        setPrepRes(response.prepStatus);
+        // Refresh global consumers
         triggerRefresh();
+        // Immediately refresh this card's ingredient details
+        if (ingredientId) {
+          try {
+            const refreshed = await api.IngredientDetails(
+              ingredientId,
+              "2025-08-06"
+            );
+            setIngredientData(refreshed);
+            setPrepRes(refreshed.prepStatus);
+          } catch (e) {
+            console.error("Failed to refresh ingredient details", e);
+          }
+        }
         return response;
       } catch (error) {
         console.error("Error updating preparation status:", error);
       }
     },
-    [triggerRefresh]
+    [triggerRefresh, ingredientId]
   );
 
   const [updatedBy, setUpdatedBy] = useState("");
@@ -195,7 +237,11 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
   useEffect(() => {
     if (timeLeft === 0 && category !== "Batch Prep Items") {
       PreparationStatus(ingredientPrepForecastId, updatedBy, "print-label");
-    } else if (timeLeft === 0 && category == "Batch Prep Items") {
+    } else if (
+      timeLeft === 0 &&
+      category == "Batch Prep Items" &&
+      effectiveStatus !== "check-temp"
+    ) {
       PreparationStatus(ingredientPrepForecastId, updatedBy, "check-temp");
     }
   }, [timeLeft, PreparationStatus, ingredientPrepForecastId, updatedBy]);
@@ -231,10 +277,13 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
   };
 
   const shouldShowTimer =
-    (prepStatus === "to-prep" || prepStatus === "in-prep") &&
+    (effectiveStatus === "to-prep" || effectiveStatus === "in-prep") &&
     !hideTimerCompletely;
   const shouldShowTimerButton =
-    shouldShowTimer || timeLeft !== null || showCheckImg;
+    shouldShowTimer ||
+    timeLeft !== null ||
+    showCheckImg ||
+    effectiveStatus === "check-temp";
 
   const DeleteExpiredApi = async () => {
     try {
@@ -267,41 +316,106 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
 
   const [labelsCnt, setLabelsCnt] = useState(1);
 
+  // Format hours (can be fractional) into "X h · Y min" label
+  const formatHoursToLabel = (hours: number) => {
+    if (hours === undefined || hours === null || Number.isNaN(hours)) {
+      return "-";
+    }
+    const totalMinutes = Math.round(hours * 60);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h} h · ${m} min`;
+  };
+
+  // Next-prep countdown and progress when item is available
+  const nextPrepTotalSeconds = Math.max(
+    0,
+    Math.round((prepIntervalHours ?? 0) * 3600)
+  );
+  const [nextPrepSecondsLeft, setNextPrepSecondsLeft] =
+    useState<number>(nextPrepTotalSeconds);
+
+  useEffect(() => {
+    // Reset when hours or status changes
+    setNextPrepSecondsLeft(nextPrepTotalSeconds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepIntervalHours, effectiveStatus]);
+
+  useEffect(() => {
+    if (effectiveStatus !== "available") return;
+    if (nextPrepTotalSeconds <= 0) return;
+
+    const intervalId = setInterval(() => {
+      setNextPrepSecondsLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveStatus, nextPrepTotalSeconds]);
+
+  const nextPrepProgressPercent = nextPrepTotalSeconds
+    ? ((nextPrepTotalSeconds - nextPrepSecondsLeft) / nextPrepTotalSeconds) *
+      100
+    : 0;
+
   const PrintLabelApi = async () => {
     try {
-      // Prepare data for preview
-      const labelsCount = Math.max(0, Number(labelsCnt) || 0);
-      const numericId = Number.parseInt(ingredientId, 10);
-      const safeId = Number.isFinite(numericId) ? numericId : Date.now();
-      setSelectedItems([
-        { id: safeId, name: itemName, labelCount: labelsCount },
-      ]);
-      setSelectedItemsCount(labelsCount > 0 ? 1 : 0);
-      setShowPreview(true);
-
       const payload = {
         ingredientPrepForecastId: ingredientPrepForecastId,
       };
       const response = await api.PrintLabel(payload);
-      // Store print metadata for preview rendering
-      const {
-        message,
-        ingredientName,
-        prepTime,
-        expiryTime,
-        prepIntervalHours,
-        updatedAt,
-      } = response || {};
+
+      // Prepare data for preview
+      const labelsCount = Math.max(0, Number(labelsCnt) || 0);
+      setSelectedItems([
+        {
+          id: ingredientPrepForecastId,
+          name: response.ingredientName,
+          labelCount: labelsCount,
+          prepTime: response.prepTime,
+          expiryTime: response.expiryTime,
+          prepIntervalHours: response.prepIntervalHours,
+        },
+      ]);
+      setSelectedItemsCount(labelsCount > 0 ? 1 : 0);
+
+      // Store single item response as labels array for consistency
       usePrintLabelStore.getState().setPreviewMeta({
-        message,
-        ingredientName,
-        prepTime,
-        expiryTime,
-        prepIntervalHours,
-        updatedAt,
+        message: response.message,
+        totalRequested: 1,
+        totalSuccessful: 1,
+        totalFailed: 0,
+        labels: [
+          {
+            ingredientPrepForecastId: ingredientPrepForecastId,
+            ingredientName: response.ingredientName,
+            prepTime: response.prepTime,
+            expiryTime: response.expiryTime,
+            prepIntervalHours: response.prepIntervalHours,
+            success: true,
+          },
+        ],
+        updatedAt: response.updatedAt,
       });
-    } catch (error) {}
+
+      setShowPreview(true);
+    } catch (error) {
+      console.error("Error printing label:", error);
+    }
   };
+
+  useEffect(() => {
+    if (effectiveStatus == "print-label") {
+      setShowCheckImg(true);
+      // const timeout = setTimeout(() => {
+      // setShowCheckImg(false);
+      // setTimeLeft(null);
+      // setHideTimerCompletely(true);
+      // }, 2000);
+
+      // return () => clearTimeout(timeout);
+    }
+  }, [effectiveStatus]);
 
   return (
     <Drawer
@@ -338,6 +452,18 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
               {showCheckImg && (
                 <p className="text-sm text-gray-600 mb-2">Prepared Quantity</p>
               )}
+              {effectiveStatus === "check-temp" &&
+                timeLeft === null &&
+                !showCheckImg && (
+                  <p className="text-sm text-gray-600 mb-2">
+                    Check Temperature
+                  </p>
+                )}
+              {effectiveStatus === "print-label" &&
+                timeLeft === null &&
+                !showCheckImg && (
+                  <p className="text-sm text-gray-400 mb-2">Print Prep Label</p>
+                )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -355,23 +481,37 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
                   </p>
                 </div>
               )}
-              {shouldShowTimer ? (
+              {shouldShowTimer || effectiveStatus == "check-temp" ? (
                 <div
-                  className="bg-white min-w-30 w-30 text-base truncate border border-gray-400 rounded-md p-1 text-center shadow-inner"
+                  className={`bg-white min-w-27 ${
+                    effectiveStatus == "check-temp" ? "w-32" : "w-28"
+                  } text-base truncate border border-gray-400 rounded-md p-1 text-center shadow-inner`}
                   title={`${currentQuantity} ${unit}`}
                 >
                   <span className="text-md text-black font-semibold">
-                    {currentQuantity}
+                    {/* {currentQuantity} */}
+                    {parseFloat(Number(currentQuantity).toFixed(2))}
+
                     <span className="font-medium text-xs"> {unit}</span>
                   </span>
                 </div>
               ) : (
                 <div
-                  className="bg-white min-w-30 w-59 text-base truncate border border-gray-400 rounded-md p-1 text-center shadow-inner"
+                  className={`bg-white ${
+                    effectiveStatus == "print-label"
+                      ? "w-33 min-w-30"
+                      : timeLeft !== null
+                      ? "w-33 min-w-30"
+                      : effectiveStatus == "available"
+                      ? "w-56.5 min-w-56.5"
+                      : "w-56.5 min-w-56.5"
+                  } text-base truncate border border-gray-400 rounded-md p-1 text-center shadow-inner`}
                   title={`${currentQuantity} ${unit}`}
                 >
                   <span className="text-md text-black font-semibold">
-                    {currentQuantity}
+                    {/* {currentQuantity} */}
+                    {parseFloat(Number(currentQuantity).toFixed(2))}
+
                     <span className="font-medium text-xs"> {unit}</span>
                   </span>
                 </div>
@@ -391,44 +531,53 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
           {shouldShowTimerButton && (
             <button
               onClick={showCheckImg ? handleCheckImgClick : handleTimerClick}
-              disabled={!shouldShowTimer && !showCheckImg && timeLeft === null}
+              disabled={
+                !shouldShowTimer &&
+                !showCheckImg &&
+                timeLeft === null &&
+                effectiveStatus !== "check-temp"
+              }
               className={`w-20 h-20 flex items-center justify-center relative transition-all ${
                 showCheckImg
-                  ? "bg-white border-2 border-green-700 rounded shadow-xl"
-                  : timeLeft !== null
+                  ? "bg-white border-2 border-green-800 rounded"
+                  : timeLeft !== null && effectiveStatus !== "check-temp"
                   ? "bg-yellow-400 shadow-lg border-2 border-yellow-500 rounded-full"
+                  : effectiveStatus == "check-temp"
+                  ? "bg-yellow-500 shadow-lg border-2 border-black rounded"
                   : "bg-white hover:bg-gray-100 border-2 border-gray-200 shadow-xl rounded-sm"
               }`}
             >
-              {timeLeft !== null && !isCompleted && (
-                <svg
-                  className="absolute inset-0 w-full h-full -rotate-90"
-                  viewBox="0 0 80 80"
-                >
-                  <circle
-                    cx="40"
-                    cy="40"
-                    r="35"
-                    stroke="white"
-                    strokeWidth="7"
-                    fill="none"
-                  />
-                  <circle
-                    cx="40"
-                    cy="40"
-                    r="35"
-                    stroke="#000"
-                    strokeWidth="7"
-                    fill="none"
-                    strokeDasharray={strokeDasharray}
-                    strokeDashoffset={strokeDashoffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-1000 ease-linear"
-                  />
-                </svg>
-              )}
+              {timeLeft !== null &&
+                !isCompleted &&
+                effectiveStatus !== "check-temp" && (
+                  <svg
+                    className="absolute inset-0 w-full h-full -rotate-90"
+                    viewBox="0 0 80 80"
+                  >
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="35"
+                      stroke="white"
+                      strokeWidth="7"
+                      fill="none"
+                    />
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="35"
+                      stroke="#000"
+                      strokeWidth="7"
+                      fill="none"
+                      strokeDasharray={strokeDasharray}
+                      strokeDashoffset={strokeDashoffset}
+                      strokeLinecap="round"
+                      className="transition-all duration-1000 ease-linear"
+                    />
+                  </svg>
+                )}
 
-              <div className="relative z-10 hover:cursor-pointer">
+              {/* <div className="relative z-10 hover:cursor-pointer">
                 {showCheckImg ? (
                   <div className="w-14 h-14 rounded-full flex items-center justify-center">
                     <Image
@@ -450,6 +599,64 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
                       {formatTime(timeLeft)}
                     </div>
                   </div>
+                ) : shouldShowTimer ? (
+                  <Image src={Temp} alt="Temp" width={20} height={20} />
+                  {prepStatus=="check-temp"?:
+                  <TimerPrepIcon />}
+                ) : prepStatus === "check-temp" ? (
+                  <Image src={Temp} alt="Temp" width={20} height={20} />
+                ) : prepStatus === "print-label" ? (
+                  <Image src={labelIcon} alt="Label" width={20} height={20} />
+                ) : null}
+              </div> */}
+              <div className={`relative z-10 hover:cursor-pointer `}>
+                {showCheckImg ? (
+                  <div
+                    onClick={() =>
+                      PreparationStatus(
+                        ingredientPrepForecastId,
+                        updatedBy,
+                        "available"
+                      )
+                    }
+                    className="w-14 h-14 rounded-full flex items-center justify-center"
+                  >
+                    <Image
+                      src={checkImg}
+                      alt="Completed"
+                      width={150}
+                      height={150}
+                      className="rounded-sm object-cover"
+                    />
+                  </div>
+                ) : timeLeft !== null &&
+                  !isCompleted &&
+                  effectiveStatus !== "check-temp" ? (
+                  <div className="text-center">
+                    <div
+                      className="font-bold text-black text-lg leading-tight tracking-wider"
+                      style={{
+                        fontFamily: "system-ui, -apple-system, sans-serif",
+                      }}
+                    >
+                      {formatTime(timeLeft)}
+                    </div>
+                  </div>
+                ) : effectiveStatus === "check-temp" ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      PreparationStatus(
+                        ingredientPrepForecastId,
+                        updatedBy,
+                        "print-label"
+                      );
+                    }}
+                  >
+                    <Image src={Temp} alt="Temp" width={45} height={45} />
+                  </div>
+                ) : effectiveStatus === "print-label" ? (
+                  <Image src={labelIcon} alt="Label" width={20} height={20} />
                 ) : shouldShowTimer ? (
                   <TimerPrepIcon />
                 ) : null}
@@ -502,20 +709,58 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
 
           <div className="p-4 pb-0 space-y-4">
             <div className="w-full bg-gray-100 rounded-lg items-center p-2">
-              {prepStatus !== "available" && (
+              {effectiveStatus && (
                 <div
                   className={`p-2 w-full rounded-lg border font-semibold items-center justify-center flex ${
                     showCheckImg
-                      ? "bg-yellow-400 border-green-700 rounded shadow-xl"
+                      ? "bg-yellow-400 border-green-800 rounded shadow-xl"
                       : timeLeft !== null ||
-                        (prepStatus === "in-prep" && timeLeft == null)
+                        (effectiveStatus === "in-prep" && timeLeft == null)
                       ? "bg-yellow-400 text-black flex rounded-full border-yellow-500"
+                      : effectiveStatus === "check-temp"
+                      ? "bg-yellow-500 text-black flex rounded-full border-black"
+                      : effectiveStatus === "available"
+                      ? "bg-transparent text-black border-none flex justify-start"
+                      : effectiveStatus === "print-label"
+                      ? "bg-gray-400 text-gray-700 flex rounded border-gray-400"
+                      : effectiveStatus === "to-prep"
+                      ? "bg-[#ffede7] text-[#bd3001] flex rounded border-[#bd3001]"
                       : "bg-[#ffece6] items-center text-red-700 flex shadow-xl rounded-sm border-red-700"
                   }`}
                 >
-                  {!showCheckImg && timeLeft == null && prepStatus !== "in-prep"
+                  {showCheckImg
+                    ? "In Prep Cycle"
+                    : timeLeft !== null ||
+                      (effectiveStatus === "in-prep" && timeLeft == null)
+                    ? "In Prep Cycle"
+                    : effectiveStatus === "check-temp"
+                    ? "Check Temperature"
+                    : effectiveStatus === "print-label"
+                    ? "Print Prep Label"
+                    : effectiveStatus == "available"
+                    ? ""
+                    : effectiveStatus === "to-prep"
                     ? "Item Unavailable"
-                    : "In Prep Cycle"}
+                    : "Item Unavailable"}
+                </div>
+              )}
+              {effectiveStatus === "available" && timeLeft == null && (
+                <div className="flex items-center gap-3">
+                  <span className="text-black font-semibold">Next prep in</span>
+                  <div className="relative flex-1 h-10 rounded-lg border-2 border-green-800 overflow-hidden">
+                    <div
+                      className="absolute left-0 top-0 h-full bg-green-400"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.max(0, nextPrepProgressPercent)
+                        )}%`,
+                      }}
+                    />
+                    <div className="relative h-full w-full flex items-center justify-center font-semibold text-black">
+                      {formatHoursToLabel(nextPrepSecondsLeft / 3600)}
+                    </div>
+                  </div>
                 </div>
               )}
               <div className="flex justify-between bg-[#FAFAFA] mt-4 rounded-lg">
@@ -652,10 +897,14 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
 
             <div className="bg-[#FAFAFA] mt-4 rounded-lg ">
               <div className="p-3 border rounded-lg border-gray-300 bg-[#FFFFFF]  ">
-                <h6>Prepare Quantity</h6>
+                {effectiveStatus == "available" ? (
+                  <h6>Prepare More</h6>
+                ) : (
+                  <h6>Prepare Quantity</h6>
+                )}
                 <div className="flex items-center gap-2 mt-4 justify-between">
                   <div className="flex items-center gap-2">
-                    {shouldShowTimer && (
+                    {(shouldShowTimer || effectiveStatus == "available") && (
                       <button
                         onClick={handleDecrease}
                         className="w-12 h-12 rounded-md p-4 bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors hover:cursor-pointer"
@@ -669,11 +918,13 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
                       title={`${currentQuantity} ${unit}`}
                     >
                       <span className="text-md text-black font-semibold">
-                        {currentQuantity}
+                        {/* {currentQuantity} */}
+                        {parseFloat(Number(currentQuantity).toFixed(2))}
+
                         <span className="font-medium text-xs"> {unit}</span>
                       </span>
                     </div>
-                    {shouldShowTimer && (
+                    {(shouldShowTimer || effectiveStatus == "available") && (
                       <button
                         onClick={handleIncrease}
                         className="w-12 h-12 p-4 rounded-md bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors hover:cursor-pointer"
@@ -683,52 +934,64 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
                     )}
                   </div>
                   <div
-                    className={`bg-[#1E3678] items-center px-5 ml-2 flex gap-2 justify-center w/full rounded-md hover:cursor-pointer ${
-                      prepStatus == "available"
-                        ? "bg-green-800 w-full border-2 py-3 border-green-700 rounded shadow-xl"
-                        : timeLeft !== null
+                    className={`items-center px-5 ml-2 flex gap-2 justify-center w/full rounded-md hover:cursor-pointer ${
+                      timeLeft !== null && effectiveStatus == "available"
+                        ? "bg-yellow-400 w-full flex shadow-lg py-0 px-0 border-2 border-yellow-500 rounded-full"
+                        : effectiveStatus === "available"
+                        ? "bg-[#1E3678] w-full border-2 border-[#1E3678] rounded shadow-xl"
+                        : timeLeft !== null && effectiveStatus !== "print-label"
                         ? "bg-yellow-400 w-full flex shadow-lg border-2 border-yellow-500 rounded-full"
-                        : ingredientData?.category == "Batch Prep Items"
+                        : effectiveStatus === "check-temp"
                         ? "bg-yellow-500 w-full flex shadow-lg border-2 border-black rounded-full py-2"
-                        : // : prepStatus == "in-prep"
-                          // ? "bg-[#dadee9] w-full flex shadow-lg border-2 border-black rounded-full py-2"
-                          "items-center w-full py-3 flex shadow-xl rounded-sm"
+                        : effectiveStatus === "print-label"
+                        ? "bg-gray-400 w-full flex shadow-lg border-2 border-gray-400 rounded py-2"
+                        : "bg-[#1E3678] items-center w-full py-3 flex shadow-xl rounded-sm"
                     }`}
-                  >
-                    <button
-                      onClick={(e) => {
-                        const isBatch =
-                          ingredientData?.category === "Batch Prep Items";
-                        const canTriggerBatch =
-                          !shouldShowTimer &&
-                          !showCheckImg &&
-                          timeLeft === null &&
-                          isBatch;
-                        if (canTriggerBatch) {
-                          e.stopPropagation();
+                    onClick={(e) => {
+                      const canTriggerAction =
+                        !shouldShowTimer &&
+                        !showCheckImg &&
+                        timeLeft === null &&
+                        (effectiveStatus === "check-temp" ||
+                          ingredientData?.category === "Batch Prep Items");
+                      if (canTriggerAction) {
+                        e.stopPropagation();
+                        if (effectiveStatus != "available") {
                           PreparationStatus(
                             ingredientPrepForecastId,
                             updatedBy,
                             "print-label"
                           );
-                          return;
                         }
-                        (showCheckImg ? handleCheckImgClick : handleTimerClick)(
-                          e
-                        );
-                      }}
+                        return;
+                      }
+                      if (effectiveStatus === "available") {
+                        handleTimerClick(e);
+                        return;
+                      }
+                      (showCheckImg ? handleCheckImgClick : handleTimerClick)(
+                        e
+                      );
+                    }}
+                  >
+                    <button
                       disabled={
                         !shouldShowTimer &&
                         !showCheckImg &&
                         timeLeft === null &&
-                        !(ingredientData?.category === "Batch Prep Items")
+                        effectiveStatus !== "check-temp" &&
+                        !(ingredientData?.category === "Batch Prep Items") &&
+                        effectiveStatus !== "to-prep" &&
+                        effectiveStatus !== "available"
                       }
                       className={` flex items-center justify-center relative transition-all ${
                         showCheckImg
-                          ? "bg-white border-green-700 rounded shadow-xl"
+                          ? "bg-white border-green-800 rounded "
+                          : timeLeft !== null && effectiveStatus == "available"
+                          ? "bg-yellow-400 flex rounded-lg px-0 m-0 w-full"
                           : timeLeft !== null
                           ? "bg-yellow-400 flex rounded-full"
-                          : "items-center flex shadow-xl rounded-sm"
+                          : "items-center flex rounded-sm"
                       }`}
                     >
                       {timeLeft !== null && !showCheckImg && (
@@ -760,9 +1023,25 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
                       )}
 
                       <div className=" z-10 hover:cursor-pointer">
-                        {prepStatus === "available" ? (
-                          <div className="border-none flex items-center justify-center bg-green-800 text-black">
-                            Ready to Use
+                        {effectiveStatus === "print-label" ? (
+                          <div
+                            onClick={() =>
+                              PreparationStatus(
+                                ingredientPrepForecastId,
+                                updatedBy,
+                                "available"
+                              )
+                            }
+                            className="border-none flex items-center justify-center bg-gray-400 text-black gap-2 text-black"
+                          >
+                            <Image
+                              src={labelIconBlacl}
+                              alt="Label"
+                              width={20}
+                              height={20}
+                              className="text-white"
+                            />
+                            Print Label
                           </div>
                         ) : timeLeft !== null ? (
                           <div className="text-center">
@@ -778,7 +1057,7 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
                           </div>
                         ) : shouldShowTimer ? (
                           <TimerPrepIcon color="white" width={30} height={30} />
-                        ) : ingredientData?.category === "Batch Prep Items" ? (
+                        ) : effectiveStatus === "check-temp" ? (
                           <div className="flex items-center justify-center text-black shadow-none">
                             <Image
                               src={Temp}
@@ -788,22 +1067,42 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
                             />
                             Check Temp
                           </div>
-                        ) : (
+                        ) : effectiveStatus === "print-label" ? (
                           <div className="flex gap-2">
-                            <Image
+                            {/* <Image
                               src={labelIcon}
                               alt="Label"
                               width={20}
                               height={20}
-                            />
-                            <h6 className="text-gray-500">Print Prep Label</h6>
+                            /> */}
+                            <h6 className="text-black bg-green-700">
+                              Ready to use
+                            </h6>
                           </div>
-                        )}
+                        ) : effectiveStatus === "to-prep" ? (
+                          <div className="flex gap-2">
+                            <TimerPrepIcon
+                              color="white"
+                              width={25}
+                              height={25}
+                            />
+                            <h6 className="text-white">Start Prep</h6>
+                          </div>
+                        ) : effectiveStatus == "available" ? (
+                          <div className="flex gap-2 my-3">
+                            <TimerPrepIcon
+                              color="white"
+                              width={25}
+                              height={25}
+                            />
+                            <h6 className="text-white">Start Prep</h6>
+                          </div>
+                        ) : null}
                       </div>
+                      {!showCheckImg && timeLeft == null && shouldShowTimer && (
+                        <span className="text-white ml-2">Start Prep</span>
+                      )}
                     </button>
-                    {!showCheckImg && timeLeft == null && shouldShowTimer && (
-                      <span className="text-white">Start Prep</span>
-                    )}
                   </div>
                 </div>
               </div>
@@ -837,8 +1136,15 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
                       <PlusIcon />
                     </button>
                   </div>
-                  <div className="bg-white border border-black py-3 px-5 ml-2 flex gap-2 justify-between w-full rounded-md">
-                    <div className="flex gap-2" onClick={PrintLabelApi}>
+                  <div className="bg-white flex items-center border border-black py-3 px-5 ml-2 flex gap-2 justify-between w-full rounded-md">
+                    <Button
+                      className="flex gap-2 bg-transparent hover:bg-transparent cursor-pointer"
+                      onClick={PrintLabelApi}
+                      disabled={
+                        effectiveStatus != "print-label" &&
+                        effectiveStatus != "available"
+                      }
+                    >
                       <Image
                         src={labelIcon}
                         alt={"Completed"}
@@ -847,7 +1153,7 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
                         className="object-cover"
                       />
                       <span className="text-gray-600">Print Label</span>
-                    </div>
+                    </Button>
                     <div>
                       <Image
                         src={bluetoothIcon}
@@ -861,31 +1167,39 @@ const PrepItemCard: React.FC<PrepItemCardProps> = ({
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 bg-[#FAFAFA] p-2 rounded-lg">
-              {ingredientData?.forecastByDaypart?.map((item, id) => (
-                <div
-                  className="bg-[#FAFAFA] rounded-lg p-4 space-y-2 border border-gray-400"
-                  key={id}
-                >
-                  <h4>{item.daypart}</h4>
-                  <div className="flex gap-4 items-center">
-                    <p className="text-xs">
-                      Forecast
-                      <br /> Quantity
-                    </p>
-                    <div className="bg-gray-100 border border-gray-400 rounded-md p-3 min-w-[150px] text-center shadow-inner">
-                      <span className="text-md text-black font-semibold">
-                        {item.forecastQuantity}
-                        <span className="font-medium text-xs">
-                          {" "}
-                          {item.unit}
+            {category == "Off-cycle Fry Prep Items" ? (
+              <div className=" gap-4 bg-[#FAFAFA] p-2 rounded-lg h-50 w-full flex items-center justify-center text-sm">
+                Off-cycle items forecast will be displayed real-time
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 bg-[#FAFAFA] p-2 rounded-lg">
+                {ingredientData?.forecastByDaypart?.map((item, id) => (
+                  <div
+                    className="bg-[#FAFAFA] rounded-lg p-4 space-y-2 border border-gray-400"
+                    key={id}
+                  >
+                    <h4>{item.daypart}</h4>
+                    <div className="flex gap-4 items-center">
+                      <p className="text-xs">
+                        Forecast
+                        <br /> Quantity
+                      </p>
+                      <div className="bg-gray-100 border border-gray-400 rounded-md p-3 min-w-[150px] text-center shadow-inner">
+                        <span className="text-md text-black font-semibold">
+                          {/* {item.forecastQuantity} */}
+                          {parseFloat(Number(item.forecastQuantity).toFixed(2))}
+
+                          <span className="font-medium text-xs">
+                            {" "}
+                            {item.unit}
+                          </span>
                         </span>
-                      </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <DrawerFooter></DrawerFooter>
